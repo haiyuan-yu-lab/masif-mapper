@@ -27,56 +27,24 @@ Output format is a TSV file with columns:
 
 
 from pathlib import Path
-from typing import List
 import numpy as np
-import numpy.typing as npt
 from biopandas.pdb import PandasPdb
 from scipy.spatial import KDTree
-
-
-def match_atoms(target_coords: npt.NDArray,
-                query_coords: npt.NDArray,
-                radius: float) -> List[int]:
-    """
-    Find atoms that are within a radius from the target vertices
-
-    Parameters
-    ----------
-    target_coords : np.ndarray shape (N, 3)
-        coordinates of the vertices
-    query_coords : np.ndarray shape (N, 3)
-        coordinates of the atoms
-    radius : float
-        radius in Å cutoff to retrieve atoms close to vertices
-
-    Returns
-    -------
-    idx : List[int]
-        indices of the atoms in `query_coords` that fall within a radius from
-        the vertices
-    """
-    from scipy.spatial import cKDTree
-
-    tree = cKDTree(query_coords)  # indexing the atom coordinates
-    # get atoms that are within a radius from the vertices
-    idx = tree.query_ball_point(target_coords, r=radius)
-    # flatten the list of lists
-    idx = [item for sublist in idx for item in sublist]
-    # remove duplicates
-    idx = list(set(idx))
-
-    return idx
 
 
 def run(pdb_file: Path,
         precomputation_dir: Path,
         radius: float,
+        chain: str,
         output_file: Path):
     assert pdb_file.is_file()
     assert precomputation_dir.is_dir()
 
     pdb = PandasPdb().read_pdb(str(pdb_file))
     atoms = pdb.df["ATOM"]
+    atoms = (atoms[atoms["chain_id"] == chain]
+             .copy().reset_index(drop=True))
+    print("shape", atoms.shape, pdb_file)
     # add node_id in the format of
     # [chain_id]:[residue_name]:[residue_number]:[insertion]
     atoms['node_id'] = (atoms['chain_id'] + ':'
@@ -125,10 +93,13 @@ if __name__ == "__main__":
                         help="Path to the MaSIF precomputation directory")
     parser.add_argument("-r", "--radius", type=float, default=-1,
                         help="radius in Å to retrieve atoms close to vertices")
+    parser.add_argument("-c", "--chain", type=str, required=True,
+                        help="restrict matching to this chain")
     parser.add_argument("-o", "--output-file", required=True,
                         help="Path to the output file")
     args = parser.parse_args()
     run(Path(args.pdb_file),
         Path(args.precomputation_directory),
         args.radius,
+        args.chain,
         Path(args.output_file))
